@@ -60,27 +60,9 @@ def process_site_data(url):
         return []
 
     data = []
-    if "cf.090227.xyz" in url:
-        rows = soup.find_all('tr')
-        for row in rows:
-            columns = row.find_all('td')
-            if len(columns) >= 3:
-                line_name = columns[0].text.strip()
-                ip_address = columns[1].text.strip()
-                latency_text = columns[2].text.strip()
-                latency_match = latency_pattern.match(latency_text)
-                if latency_match:
-                    latency_value = float(latency_match.group(1))
-                    isp = isp_classifier(line_name)
-                    data.append({
-                        'ip': ip_address,
-                        'line_name': line_name,
-                        'latency': latency_value,
-                        'isp': isp
-                    })
-
-    elif "www.wetest.vip" in url:
-         table = soup.find('table', {'class': 'table'})
+     if "www.wetest.vip" in url:
+        # 查找包含IP数据的主表格
+        table = soup.find('table', {'class': 'table'})
         if table:
             rows = table.find_all('tr')[1:]  # 跳过表头
             for row in rows:
@@ -105,6 +87,26 @@ def process_site_data(url):
                                 'isp': isp,
                                 'source': 'wetest'
                             })
+    
+    # 原有其他网站的解析保持不变
+    elif "cf.090227.xyz" in url:
+        rows = soup.find_all('tr')
+        for row in rows:
+            columns = row.find_all('td')
+            if len(columns) >= 3:
+                line_name = columns[0].text.strip()
+                ip_address = columns[1].text.strip()
+                latency_text = columns[2].text.strip()
+                latency_match = latency_pattern.match(latency_text)
+                if latency_match:
+                    latency_value = float(latency_match.group(1))
+                    isp = isp_classifier(line_name)
+                    data.append({
+                        'ip': ip_address,
+                        'line_name': line_name,
+                        'latency': latency_value,
+                        'isp': isp
+                    })
 
     elif "ip.164746.xyz" in url:
         rows = soup.find_all('tr')
