@@ -142,8 +142,8 @@ def main():
         ip_lines = [line.strip() for line in file if line.strip()]
         ipv4 = [line.split('#')[0] for line in ip_lines if '#' in line]
     
-    # 只取前50个IP地址
-    ipv4 = ipv4[:50]
+    # 只取前200个IP地址
+    ipv4 = ipv4[:200]
     
     print(f"准备添加 {len(ipv4)} 条DNS记录...")
     
