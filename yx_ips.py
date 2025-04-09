@@ -18,11 +18,29 @@ headers = {
 urls = [
     "https://cf.090227.xyz/",
     "https://stock.hostmonit.com/CloudFlareYes",
-    "https://ip.164746.xyz/"
+    "https://ip.164746.xyz/",
+    "https://monitor.gacjie.cn/page/cloudflare/ipv4.html",
+    "https://345673.xyz/"
 ]
 
 # 解析延迟数据的正则表达式
 latency_pattern = re.compile(r'(\d+(\.\d+)?)\s*(ms|毫秒)?')
+
+# 运营商关键词映射
+ISP_KEYWORDS = {
+    '移动': ['移动', 'CMCC', 'CM', '中国移动'],
+    '联通': ['联通', 'CUCC', 'CU', '中国联通', '网通'],
+    '电信': ['电信', 'CTCC', 'CT', '中国电信']
+}
+
+def isp_classifier(line_name):
+    """根据线路名称分类运营商"""
+    line_name = line_name.lower()
+    for isp, keywords in ISP_KEYWORDS.items():
+        for keyword in keywords:
+            if keyword.lower() in line_name:
+                return isp
+    return '其他'
 
 # 提取表格数据的函数
 def extract_table_data(url):
@@ -54,9 +72,15 @@ def process_site_data(url):
                 latency_text = columns[2].text.strip()
                 latency_match = latency_pattern.match(latency_text)
                 if latency_match:
-                    latency_value = latency_match.group(1)
+                    latency_value = float(latency_match.group(1))
                     latency_unit = 'ms'
-                    data.append(f"{ip_address}#{line_name}-{latency_value}{latency_unit}")
+                    isp = isp_classifier(line_name)
+                    data.append({
+                        'ip': ip_address,
+                        'line_name': line_name,
+                        'latency': latency_value,
+                        'isp': isp
+                    })
 
     elif "stock.hostmonit.com" in url:
         rows = soup.find_all('tr', class_=re.compile(r'el-table__row'))
@@ -68,9 +92,15 @@ def process_site_data(url):
                 latency_text = columns[2].text.strip()
                 latency_match = latency_pattern.match(latency_text)
                 if latency_match:
-                    latency_value = latency_match.group(1)
+                    latency_value = float(latency_match.group(1))
                     latency_unit = 'ms'
-                    data.append(f"{ip_address}#{line_name}-{latency_value}{latency_unit}")
+                    isp = isp_classifier(line_name)
+                    data.append({
+                        'ip': ip_address,
+                        'line_name': line_name,
+                        'latency': latency_value,
+                        'isp': isp
+                    })
 
     elif "ip.164746.xyz" in url:
         rows = soup.find_all('tr')
@@ -78,12 +108,19 @@ def process_site_data(url):
             columns = row.find_all('td')
             if len(columns) >= 5:
                 ip_address = columns[0].text.strip()
+                line_name = "未知线路"
                 latency_text = columns[4].text.strip()
                 latency_match = latency_pattern.match(latency_text)
                 if latency_match:
-                    latency_value = latency_match.group(1)
+                    latency_value = float(latency_match.group(1))
                     latency_unit = 'ms'
-                    data.append(f"{ip_address}-{latency_value}{latency_unit}")
+                    isp = isp_classifier(line_name)
+                    data.append({
+                        'ip': ip_address,
+                        'line_name': line_name,
+                        'latency': latency_value,
+                        'isp': isp
+                    })
 
     elif "monitor.gacjie.cn" in url:
         rows = soup.find_all('tr')
@@ -95,9 +132,15 @@ def process_site_data(url):
                 latency_text = tds[4].text.strip()
                 latency_match = latency_pattern.match(latency_text)
                 if latency_match:
-                    latency_value = latency_match.group(1)
+                    latency_value = float(latency_match.group(1))
                     latency_unit = 'ms'
-                    data.append(f"{ip_address}#{line_name}-{latency_value}{latency_unit}")
+                    isp = isp_classifier(line_name)
+                    data.append({
+                        'ip': ip_address,
+                        'line_name': line_name,
+                        'latency': latency_value,
+                        'isp': isp
+                    })
 
     elif "345673.xyz" in url:
         rows = soup.find_all('tr', class_=re.compile(r'line-cm|line-ct|line-cu'))
@@ -109,11 +152,59 @@ def process_site_data(url):
                 latency_text = tds[3].text.strip()
                 latency_match = latency_pattern.match(latency_text)
                 if latency_match:
-                    latency_value = latency_match.group(1)
+                    latency_value = float(latency_match.group(1))
                     latency_unit = 'ms'
-                    data.append(f"{ip_address}#{line_name}-{latency_value}{latency_unit}")
+                    isp = isp_classifier(line_name)
+                    data.append({
+                        'ip': ip_address,
+                        'line_name': line_name,
+                        'latency': latency_value,
+                        'isp': isp
+                    })
 
     return data
+
+def filter_and_sort_ips(data):
+    """筛选并排序IP，按运营商分类"""
+    # 按运营商分类
+    isp_data = {
+        '移动': [],
+        '联通': [],
+        '电信': []
+    }
+    
+    for item in data:
+        if item['latency'] < 150:  # 只保留延迟低于150ms的IP
+            if item['isp'] in isp_data:
+                isp_data[item['isp']].append(item)
+    
+    # 对每个运营商的IP按延迟排序
+    for isp in isp_data:
+        isp_data[isp].sort(key=lambda x: x['latency'])
+    
+    # 获取每个运营商前50个IP
+    result = {}
+    for isp in isp_data:
+        result[isp] = isp_data[isp][:50]
+    
+    return result
+
+def save_to_file(isp_ips):
+    """将筛选后的IP保存到文件"""
+    with open('yx_ips.txt', 'w', encoding='utf-8') as f:
+        for isp, ips in isp_ips.items():
+            f.write(f"# {isp} IP列表 (共{len(ips)}个)\n")
+            for ip_info in ips:
+                line = f"{ip_info['ip']}#{ip_info['line_name']}-{ip_info['latency']}ms\n"
+                f.write(line)
+            f.write("\n")
+
+def get_all_ips(isp_ips):
+    """获取所有要添加的IP地址"""
+    all_ips = []
+    for isp, ips in isp_ips.items():
+        all_ips.extend([ip['ip'] for ip in ips])
+    return all_ips
 
 # 主函数，处理所有网站的数据
 def main():
@@ -122,32 +213,26 @@ def main():
         site_data = process_site_data(url)
         all_data.extend(site_data)
 
-    # 去除重复的IP地址行
-    unique_data = list(set(all_data))
-
-    # 过滤延迟数据低于100ms的行
-    filtered_data = [line for line in unique_data if float(line.split('-')[-1].replace('ms', '')) < 100]
-
-    # 写入到yx_ips.txt文件
-    with open('yx_ips.txt', 'w', encoding='utf-8') as f:
-        for line in filtered_data:
-            f.write(line + '\n')
+    # 筛选并排序IP
+    isp_ips = filter_and_sort_ips(all_data)
+    
+    # 保存到文件
+    save_to_file(isp_ips)
+    
+    # 打印统计信息
+    for isp, ips in isp_ips.items():
+        print(f"找到 {isp} IP {len(ips)} 个，最低延迟: {ips[0]['latency']}ms" if ips else f"没有找到 {isp} IP")
 
     # 执行清空DNS记录的操作
     clear_dns_records()
     
-    # 从yx_ips.txt文件中提取IPv4地址
-    with open("yx_ips.txt", "r") as file:
-        ip_lines = [line.strip() for line in file if line.strip()]
-        ipv4 = [line.split('#')[0] for line in ip_lines if '#' in line]
+    # 获取所有要添加的IP
+    all_ips = get_all_ips(isp_ips)
     
-    # 只取前200个IP地址
-    ipv4 = ipv4[:200]
-    
-    print(f"准备添加 {len(ipv4)} 条DNS记录...")
+    print(f"准备添加 {len(all_ips)} 条DNS记录...")
     
     # 执行添加DNS记录的操作
-    for ip in ipv4:
+    for ip in all_ips:
         add_dns_record(ip)
 
 # 清空CF_DOMAIN_NAME的所有DNS记录
