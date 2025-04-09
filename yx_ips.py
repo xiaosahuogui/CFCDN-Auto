@@ -60,7 +60,7 @@ def process_site_data(url):
         return []
 
     data = []
-     if "www.wetest.vip" in url:
+    if "www.wetest.vip" in url:
         # 查找包含IP数据的主表格
         table = soup.find('table', {'class': 'table'})
         if not table:
@@ -107,7 +107,6 @@ def process_site_data(url):
                         'latency': latency_value,
                         'isp': isp
                     })
-
 
     elif "stock.hostmonit.com" in url:
         rows = soup.find_all('tr', class_=re.compile(r'el-table__row'))
