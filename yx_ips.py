@@ -3,6 +3,7 @@ import requests
 from bs4 import BeautifulSoup
 import re
 from collections import defaultdict
+import json
 
 # Cloudflare API配置信息
 CF_API_KEY = os.getenv('CF_API_KEY')
@@ -18,9 +19,9 @@ headers = {
 # 定义五个网址
 urls = [
     "https://cf.090227.xyz/",
-    "https://jkapi.com/api/cf_best?server=1&type=v4",
     "https://ip.164746.xyz/",
-    "https://monitor.gacjie.cn/page/cloudflare/ipv4.html"
+    "https://monitor.gacjie.cn/page/cloudflare/ipv4.html",
+    "https://jkapi.com/api/cf_best?server=1&type=v4"
 ]
 
 # 解析延迟数据的正则表达式
@@ -46,8 +47,11 @@ def extract_table_data(url):
     try:
         response = requests.get(url, headers=headers, timeout=10)
         if response.status_code == 200:
-            soup = BeautifulSoup(response.content, 'html.parser')
-            return soup
+            if "jkapi.com" in url:
+                return response.json()  # 直接返回JSON数据
+            else:
+                soup = BeautifulSoup(response.content, 'html.parser')
+                return soup
         else:
             print(f"Failed to fetch data from {url}. Status code: {response.status_code}")
     except requests.RequestException as e:
@@ -55,137 +59,88 @@ def extract_table_data(url):
     return None
 
 def process_site_data(url):
-    soup = extract_table_data(url)
-    if not soup:
+    data = extract_table_data(url)
+    if not data:
         return []
 
-    data = []
     if "jkapi.com" in url:
-        # 查找包含IP数据的主表格
-        table = soup.find('table', {'class': 'table'})
-        if not table:
-            table = soup.find('table')  # 尝试查找任何表格
-        
-        if table:
-            rows = table.find_all('tr')[1:]  # 跳过表头
+        # 处理JSON格式的API数据
+        result = []
+        if data.get('status') and data.get('code') == 200:
+            info = data.get('info', {})
+            for isp_key in ['CM', 'CU', 'CT']:
+                for item in info.get(isp_key, []):
+                    result.append({
+                        'ip': item.get('ip', ''),
+                        'line_name': item.get('line_name', ''),
+                        'latency': item.get('delay', 0),
+                        'isp': isp_classifier(item.get('line_name', ''))
+                    })
+        return result
+    elif isinstance(data, BeautifulSoup):
+        # 原有的HTML处理逻辑
+        html_data = data
+        data_list = []
+        if "cf.090227.xyz" in url:
+            rows = html_data.find_all('tr')
             for row in rows:
                 columns = row.find_all('td')
-                if len(columns) >= 7:  # 确保有完整数据列
+                if len(columns) >= 3:
                     line_name = columns[0].text.strip()
                     ip_address = columns[1].text.strip()
-                    latency_text = columns[4].text.strip()  # 延迟在第5列
-                    
-                    # 解析延迟值
-                    latency_match = latency_pattern.search(latency_text)
+                    latency_text = columns[2].text.strip()
+                    latency_match = latency_pattern.match(latency_text)
                     if latency_match:
                         latency_value = float(latency_match.group(1))
                         isp = isp_classifier(line_name)
-                        
-                        data.append({
+                        data_list.append({
                             'ip': ip_address,
                             'line_name': line_name,
                             'latency': latency_value,
                             'isp': isp
                         })
-    
-    # 原有其他网站的解析保持不变
-    elif "cf.090227.xyz" in url:
-        rows = soup.find_all('tr')
-        for row in rows:
-            columns = row.find_all('td')
-            if len(columns) >= 3:
-                line_name = columns[0].text.strip()
-                ip_address = columns[1].text.strip()
-                latency_text = columns[2].text.strip()
-                latency_match = latency_pattern.match(latency_text)
-                if latency_match:
-                    latency_value = float(latency_match.group(1))
-                    isp = isp_classifier(line_name)
-                    data.append({
-                        'ip': ip_address,
-                        'line_name': line_name,
-                        'latency': latency_value,
-                        'isp': isp
-                    })
 
-    elif "stock.hostmonit.com" in url:
-        rows = soup.find_all('tr', class_=re.compile(r'el-table__row'))
-        for row in rows:
-            columns = row.find_all('td')
-            if len(columns) >= 3:
-                line_name = columns[0].text.strip()
-                ip_address = columns[1].text.strip()
-                latency_text = columns[2].text.strip()
-                latency_match = latency_pattern.match(latency_text)
-                if latency_match:
-                    latency_value = float(latency_match.group(1))
-                    isp = isp_classifier(line_name)
-                    data.append({
-                        'ip': ip_address,
-                        'line_name': line_name,
-                        'latency': latency_value,
-                        'isp': isp
-                    })
+        elif "ip.164746.xyz" in url:
+            rows = html_data.find_all('tr')
+            for row in rows:
+                columns = row.find_all('td')
+                if len(columns) >= 5:
+                    ip_address = columns[0].text.strip()
+                    line_name = "未知线路"
+                    latency_text = columns[4].text.strip()
+                    latency_match = latency_pattern.match(latency_text)
+                    if latency_match:
+                        latency_value = float(latency_match.group(1))
+                        isp = isp_classifier(line_name)
+                        data_list.append({
+                            'ip': ip_address,
+                            'line_name': line_name,
+                            'latency': latency_value,
+                            'isp': isp
+                        })
 
-    elif "ip.164746.xyz" in url:
-        rows = soup.find_all('tr')
-        for row in rows:
-            columns = row.find_all('td')
-            if len(columns) >= 5:
-                ip_address = columns[0].text.strip()
-                line_name = "未知线路"
-                latency_text = columns[4].text.strip()
-                latency_match = latency_pattern.match(latency_text)
-                if latency_match:
-                    latency_value = float(latency_match.group(1))
-                    isp = isp_classifier(line_name)
-                    data.append({
-                        'ip': ip_address,
-                        'line_name': line_name,
-                        'latency': latency_value,
-                        'isp': isp
-                    })
+        elif "monitor.gacjie.cn" in url:
+            rows = html_data.find_all('tr')
+            for row in rows:
+                tds = row.find_all('td')
+                if len(tds) >= 5:
+                    line_name = tds[0].text.strip()
+                    ip_address = tds[1].text.strip()
+                    latency_text = tds[4].text.strip()
+                    latency_match = latency_pattern.match(latency_text)
+                    if latency_match:
+                        latency_value = float(latency_match.group(1))
+                        isp = isp_classifier(line_name)
+                        data_list.append({
+                            'ip': ip_address,
+                            'line_name': line_name,
+                            'latency': latency_value,
+                            'isp': isp
+                        })
+        return data_list
+    return []
 
-    elif "monitor.gacjie.cn" in url:
-        rows = soup.find_all('tr')
-        for row in rows:
-            tds = row.find_all('td')
-            if len(tds) >= 5:
-                line_name = tds[0].text.strip()
-                ip_address = tds[1].text.strip()
-                latency_text = tds[4].text.strip()
-                latency_match = latency_pattern.match(latency_text)
-                if latency_match:
-                    latency_value = float(latency_match.group(1))
-                    isp = isp_classifier(line_name)
-                    data.append({
-                        'ip': ip_address,
-                        'line_name': line_name,
-                        'latency': latency_value,
-                        'isp': isp
-                    })
-
-    elif "345673.xyz" in url:
-        rows = soup.find_all('tr', class_=re.compile(r'line-cm|line-ct|line-cu'))
-        for row in rows:
-            tds = row.find_all('td')
-            if len(tds) >= 4:
-                line_name = tds[0].text.strip()
-                ip_address = tds[1].text.strip()
-                latency_text = tds[3].text.strip()
-                latency_match = latency_pattern.match(latency_text)
-                if latency_match:
-                    latency_value = float(latency_match.group(1))
-                    isp = isp_classifier(line_name)
-                    data.append({
-                        'ip': ip_address,
-                        'line_name': line_name,
-                        'latency': latency_value,
-                        'isp': isp
-                    })
-
-    return data
-
+# 以下代码保持不变...
 def filter_and_sort_ips(data):
     """筛选并排序IP，按运营商分类"""
     # 按运营商分类
