@@ -18,10 +18,8 @@ headers = {
 # 定义五个网址
 urls = [
     "https://cf.090227.xyz/",
-    "https://stock.hostmonit.com/CloudFlareYes",
     "https://ip.164746.xyz/",
-    "https://monitor.gacjie.cn/page/cloudflare/ipv4.html",
-    "https://345673.xyz/"
+    "https://monitor.gacjie.cn/page/cloudflare/ipv4.html"
 ]
 
 # 解析延迟数据的正则表达式
@@ -164,7 +162,7 @@ def filter_and_sort_ips(data):
     isp_data = defaultdict(list)
     
     for item in data:
-        if item['isp'] in ISP_KEYWORDS and item['latency'] <= 200:
+        if item['isp'] in ISP_KEYWORDS and item['latency'] <= 260:
             isp_data[item['isp']].append(item)
     
     # 对每个运营商的IP按延迟排序
