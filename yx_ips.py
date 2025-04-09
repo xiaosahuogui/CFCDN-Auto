@@ -2,6 +2,7 @@ import os
 import requests
 from bs4 import BeautifulSoup
 import re
+from collections import defaultdict
 
 # Cloudflare API配置信息
 CF_API_KEY = os.getenv('CF_API_KEY')
@@ -42,10 +43,9 @@ def isp_classifier(line_name):
                 return isp
     return '其他'
 
-# 提取表格数据的函数
 def extract_table_data(url):
     try:
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=headers, timeout=10)
         if response.status_code == 200:
             soup = BeautifulSoup(response.content, 'html.parser')
             return soup
@@ -55,7 +55,6 @@ def extract_table_data(url):
         print(f"Request failed for {url}: {e}")
     return None
 
-# 处理每个网址的数据
 def process_site_data(url):
     soup = extract_table_data(url)
     if not soup:
@@ -73,7 +72,6 @@ def process_site_data(url):
                 latency_match = latency_pattern.match(latency_text)
                 if latency_match:
                     latency_value = float(latency_match.group(1))
-                    latency_unit = 'ms'
                     isp = isp_classifier(line_name)
                     data.append({
                         'ip': ip_address,
@@ -93,7 +91,6 @@ def process_site_data(url):
                 latency_match = latency_pattern.match(latency_text)
                 if latency_match:
                     latency_value = float(latency_match.group(1))
-                    latency_unit = 'ms'
                     isp = isp_classifier(line_name)
                     data.append({
                         'ip': ip_address,
@@ -113,7 +110,6 @@ def process_site_data(url):
                 latency_match = latency_pattern.match(latency_text)
                 if latency_match:
                     latency_value = float(latency_match.group(1))
-                    latency_unit = 'ms'
                     isp = isp_classifier(line_name)
                     data.append({
                         'ip': ip_address,
@@ -133,7 +129,6 @@ def process_site_data(url):
                 latency_match = latency_pattern.match(latency_text)
                 if latency_match:
                     latency_value = float(latency_match.group(1))
-                    latency_unit = 'ms'
                     isp = isp_classifier(line_name)
                     data.append({
                         'ip': ip_address,
@@ -153,7 +148,6 @@ def process_site_data(url):
                 latency_match = latency_pattern.match(latency_text)
                 if latency_match:
                     latency_value = float(latency_match.group(1))
-                    latency_unit = 'ms'
                     isp = isp_classifier(line_name)
                     data.append({
                         'ip': ip_address,
@@ -166,17 +160,12 @@ def process_site_data(url):
 
 def filter_and_sort_ips(data):
     """筛选并排序IP，按运营商分类"""
-    # 按运营商分类
-    isp_data = {
-        '移动': [],
-        '联通': [],
-        '电信': []
-    }
+    # 按运营商分类并过滤延迟
+    isp_data = defaultdict(list)
     
     for item in data:
-        if item['latency'] < 150:  # 只保留延迟低于150ms的IP
-            if item['isp'] in isp_data:
-                isp_data[item['isp']].append(item)
+        if item['isp'] in ISP_KEYWORDS and item['latency'] <= 200:
+            isp_data[item['isp']].append(item)
     
     # 对每个运营商的IP按延迟排序
     for isp in isp_data:
@@ -184,8 +173,8 @@ def filter_and_sort_ips(data):
     
     # 获取每个运营商前50个IP
     result = {}
-    for isp in isp_data:
-        result[isp] = isp_data[isp][:50]
+    for isp in ['移动', '电信', '联通']:  # 确保顺序一致
+        result[isp] = isp_data.get(isp, [])[:50]
     
     return result
 
@@ -206,37 +195,8 @@ def get_all_ips(isp_ips):
         all_ips.extend([ip['ip'] for ip in ips])
     return all_ips
 
-# 主函数，处理所有网站的数据
-def main():
-    all_data = []
-    for url in urls:
-        site_data = process_site_data(url)
-        all_data.extend(site_data)
-
-    # 筛选并排序IP
-    isp_ips = filter_and_sort_ips(all_data)
-    
-    # 保存到文件
-    save_to_file(isp_ips)
-    
-    # 打印统计信息
-    for isp, ips in isp_ips.items():
-        print(f"找到 {isp} IP {len(ips)} 个，最低延迟: {ips[0]['latency']}ms" if ips else f"没有找到 {isp} IP")
-
-    # 执行清空DNS记录的操作
-    clear_dns_records()
-    
-    # 获取所有要添加的IP
-    all_ips = get_all_ips(isp_ips)
-    
-    print(f"准备添加 {len(all_ips)} 条DNS记录...")
-    
-    # 执行添加DNS记录的操作
-    for ip in all_ips:
-        add_dns_record(ip)
-
-# 清空CF_DOMAIN_NAME的所有DNS记录
 def clear_dns_records():
+    """清空DNS记录"""
     print("开始清空所有DNS记录...")
     url = f"https://api.cloudflare.com/client/v4/zones/{CF_ZONE_ID}/dns_records"
     headers = {
@@ -245,29 +205,24 @@ def clear_dns_records():
         "Content-Type": "application/json"
     }
 
-    params = {
-        "per_page": 1000  # 确保获取所有记录
-    }
-
+    params = {"per_page": 1000}
     response = requests.get(url, headers=headers, params=params)
+    
     if response.status_code == 200:
         records = response.json().get('result', [])
         print(f"找到 {len(records)} 条DNS记录需要删除...")
         
         for record in records:
-            # 只删除与我们的域名匹配的记录
             if record['name'] == CF_DOMAIN_NAME or record['name'].endswith(f".{CF_DOMAIN_NAME}"):
-                delete_url = f"https://api.cloudflare.com/client/v4/zones/{CF_ZONE_ID}/dns_records/{record['id']}"
+                delete_url = f"{url}/{record['id']}"
                 delete_response = requests.delete(delete_url, headers=headers)
                 if delete_response.status_code == 200:
                     print(f"成功删除DNS记录: {record['name']} ({record['type']})")
                 else:
-                    print(f"删除DNS记录失败: {record['id']}, 状态码: {delete_response.status_code}, 响应: {delete_response.text}")
-    else:
-        print(f"获取DNS记录失败, 状态码: {response.status_code}, 响应: {response.text}")
+                    print(f"删除DNS记录失败: {record['id']}, 状态码: {delete_response.status_code}")
 
-# 添加新的IPv4地址为DNS记录
 def add_dns_record(ip):
+    """添加DNS记录"""
     print(f"正在添加DNS记录: {ip}")
     url = f"https://api.cloudflare.com/client/v4/zones/{CF_ZONE_ID}/dns_records"
     headers = {
@@ -279,14 +234,40 @@ def add_dns_record(ip):
         "type": "A",
         "name": CF_DOMAIN_NAME,
         "content": ip,
-        "ttl": 60,  # 设置TTL为1分钟
+        "ttl": 60,
         "proxied": False
     }
     response = requests.post(url, headers=headers, json=data)
     if response.status_code == 200:
         print(f"成功创建DNS记录: {ip}")
     else:
-        print(f"创建DNS记录失败: {ip}, 状态码: {response.status_code}, 响应: {response.text}")
+        print(f"创建DNS记录失败: {ip}, 状态码: {response.status_code}")
+
+def main():
+    all_data = []
+    for url in urls:
+        print(f"正在处理 {url}...")
+        site_data = process_site_data(url)
+        all_data.extend(site_data)
+        print(f"从 {url} 获取到 {len(site_data)} 条IP记录")
+
+    # 筛选并排序IP
+    isp_ips = filter_and_sort_ips(all_data)
+    
+    # 保存到文件
+    save_to_file(isp_ips)
+    
+    # 打印统计信息
+    for isp in ['移动', '电信', '联通']:
+        ips = isp_ips.get(isp, [])
+        print(f"找到 {isp} IP {len(ips)} 个" + (f"，最低延迟: {ips[0]['latency']}ms" if ips else ""))
+
+    # 执行DNS操作
+    clear_dns_records()
+    all_ips = get_all_ips(isp_ips)
+    print(f"准备添加 {len(all_ips)} 条DNS记录...")
+    for ip in all_ips:
+        add_dns_record(ip)
 
 if __name__ == "__main__":
     main()
