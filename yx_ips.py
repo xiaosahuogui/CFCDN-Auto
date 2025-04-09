@@ -18,7 +18,7 @@ headers = {
 # 定义五个网址
 urls = [
     "https://cf.090227.xyz/",
-    "https://www.wetest.vip/page/cloudflare/address_v4.html",
+    "https://jkapi.com/api/cf_best?server=1&type=v4",
     "https://ip.164746.xyz/",
     "https://monitor.gacjie.cn/page/cloudflare/ipv4.html"
 ]
@@ -60,7 +60,7 @@ def process_site_data(url):
         return []
 
     data = []
-    if "www.wetest.vip" in url:
+    if "jkapi.com" in url:
         # 查找包含IP数据的主表格
         table = soup.find('table', {'class': 'table'})
         if not table:
