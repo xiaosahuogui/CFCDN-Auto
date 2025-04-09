@@ -18,6 +18,7 @@ headers = {
 # 定义五个网址
 urls = [
     "https://cf.090227.xyz/",
+    "https://www.wetest.vip/page/cloudflare/address_v4.html",
     "https://ip.164746.xyz/",
     "https://monitor.gacjie.cn/page/cloudflare/ipv4.html"
 ]
@@ -78,7 +79,7 @@ def process_site_data(url):
                         'isp': isp
                     })
 
-    elif "stock.hostmonit.com" in url:
+    elif "www.wetest.vip" in url:
         rows = soup.find_all('tr', class_=re.compile(r'el-table__row'))
         for row in rows:
             columns = row.find_all('td')
@@ -158,11 +159,11 @@ def process_site_data(url):
 
 def filter_and_sort_ips(data):
     """筛选并排序IP，按运营商分类"""
-    # 按运营商分类并过滤延迟
+    # 按运营商分类
     isp_data = defaultdict(list)
     
     for item in data:
-        if item['isp'] in ISP_KEYWORDS and item['latency'] <= 260:
+        if item['isp'] in ISP_KEYWORDS:  # 只处理三大运营商的IP
             isp_data[item['isp']].append(item)
     
     # 对每个运营商的IP按延迟排序
