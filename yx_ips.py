@@ -20,7 +20,6 @@ urls = [
     "https://stock.hostmonit.com/CloudFlareYes",
     "https://ip.164746.xyz/",
     "https://monitor.gacjie.cn/page/cloudflare/ipv4.html",
-    "https://345673.xyz/"
 ]
 
 # 解析延迟数据的正则表达式
