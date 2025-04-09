@@ -140,41 +140,52 @@ def main():
     
     # 从yx_ips.txt文件中提取IPv4地址
     with open("yx_ips.txt", "r") as file:
-        ipv4 = [line.split('#')[0] for line in file if '#' in line]
-
+        ip_lines = [line.strip() for line in file if line.strip()]
+        ipv4 = [line.split('#')[0] for line in ip_lines if '#' in line]
+    
+    # 只取前50个IP地址
+    ipv4 = ipv4[:50]
+    
+    print(f"准备添加 {len(ipv4)} 条DNS记录...")
+    
     # 执行添加DNS记录的操作
     for ip in ipv4:
         add_dns_record(ip)
 
 # 清空CF_DOMAIN_NAME的所有DNS记录
 def clear_dns_records():
-    url = f"https://api.cloudflare.com/client/v4/zones/{CF_ZONE_ID}/dns_records?name={CF_DOMAIN_NAME}"
+    print("开始清空所有DNS记录...")
+    url = f"https://api.cloudflare.com/client/v4/zones/{CF_ZONE_ID}/dns_records"
     headers = {
         "Authorization": f"Bearer {CF_API_KEY}",
         "X-Auth-Email": CF_API_EMAIL,
         "Content-Type": "application/json"
     }
 
-    response = requests.get(url, headers=headers)
+    params = {
+        "per_page": 1000  # 确保获取所有记录
+    }
+
+    response = requests.get(url, headers=headers, params=params)
     if response.status_code == 200:
         records = response.json().get('result', [])
+        print(f"找到 {len(records)} 条DNS记录需要删除...")
+        
         for record in records:
-            delete_url = f"https://api.cloudflare.com/client/v4/zones/{CF_ZONE_ID}/dns_records/{record['id']}"
-            delete_response = requests.delete(delete_url, headers=headers)
-            if delete_response.status_code == 200:
-                print(f"Successfully deleted DNS record: {record['id']}")
-            else:
-                print(f"Failed to delete DNS record: {record['id']}, status code: {delete_response.status_code}, response: {delete_response.text}")
+            # 只删除与我们的域名匹配的记录
+            if record['name'] == CF_DOMAIN_NAME or record['name'].endswith(f".{CF_DOMAIN_NAME}"):
+                delete_url = f"https://api.cloudflare.com/client/v4/zones/{CF_ZONE_ID}/dns_records/{record['id']}"
+                delete_response = requests.delete(delete_url, headers=headers)
+                if delete_response.status_code == 200:
+                    print(f"成功删除DNS记录: {record['name']} ({record['type']})")
+                else:
+                    print(f"删除DNS记录失败: {record['id']}, 状态码: {delete_response.status_code}, 响应: {delete_response.text}")
     else:
-        print(f"Failed to fetch DNS records, status code: {response.status_code}, response: {response.text}")
+        print(f"获取DNS记录失败, 状态码: {response.status_code}, 响应: {response.text}")
 
-# 添加新的IPv4地址为DNS记录，在 add_dns_record 函数中添加调试输出
+# 添加新的IPv4地址为DNS记录
 def add_dns_record(ip):
-    # 重新获取 ipv4 地址
-    with open("yx_ips.txt", "r") as file:
-        ipv4 = [line.split('#')[0] for line in file if '#' in line]
-
-    print(f"Adding DNS record for IP: {ip}")
+    print(f"正在添加DNS记录: {ip}")
     url = f"https://api.cloudflare.com/client/v4/zones/{CF_ZONE_ID}/dns_records"
     headers = {
         "Authorization": f"Bearer {CF_API_KEY}",
@@ -190,9 +201,9 @@ def add_dns_record(ip):
     }
     response = requests.post(url, headers=headers, json=data)
     if response.status_code == 200:
-        print(f"Successfully created DNS record for IP: {ip}")
+        print(f"成功创建DNS记录: {ip}")
     else:
-        print(f"Failed to create DNS record for IP: {ip}, status code: {response.status_code}, response: {response.text}")
+        print(f"创建DNS记录失败: {ip}, 状态码: {response.status_code}, 响应: {response.text}")
 
 if __name__ == "__main__":
     main()
