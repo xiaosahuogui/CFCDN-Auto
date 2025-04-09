@@ -15,24 +15,22 @@ headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
 }
 
-# 定义网址列表（新增wetest.vip）
+# 定义五个网址
 urls = [
     "https://cf.090227.xyz/",
-    "https://stock.hostmonit.com/CloudFlareYes",
+    "https://www.wetest.vip/page/cloudflare/address_v4.html",
     "https://ip.164746.xyz/",
-    "https://monitor.gacjie.cn/page/cloudflare/ipv4.html",
-    "https://345673.xyz/",
-    "https://www.wetest.vip/page/cloudflare/address_v4.html"
+    "https://monitor.gacjie.cn/page/cloudflare/ipv4.html"
 ]
 
 # 解析延迟数据的正则表达式
 latency_pattern = re.compile(r'(\d+(\.\d+)?)\s*(ms|毫秒)?')
 
-# 运营商关键词映射（新增wetest可能的线路名称）
+# 运营商关键词映射
 ISP_KEYWORDS = {
-    '移动': ['移动', 'CMCC', 'CM', '中国移动', '移动线路'],
-    '联通': ['联通', 'CUCC', 'CU', '中国联通', '网通', '联通线路'],
-    '电信': ['电信', 'CTCC', 'CT', '中国电信', '电信线路']
+    '移动': ['移动', 'CMCC', 'CM', '中国移动'],
+    '联通': ['联通', 'CUCC', 'CU', '中国联通', '网通'],
+    '电信': ['电信', 'CTCC', 'CT', '中国电信']
 }
 
 def isp_classifier(line_name):
@@ -46,7 +44,7 @@ def isp_classifier(line_name):
 
 def extract_table_data(url):
     try:
-        response = requests.get(url, headers=headers, timeout=15)
+        response = requests.get(url, headers=headers, timeout=10)
         if response.status_code == 200:
             soup = BeautifulSoup(response.content, 'html.parser')
             return soup
@@ -62,10 +60,12 @@ def process_site_data(url):
         return []
 
     data = []
-    
-    # wetest.vip专用解析
-    if "www.wetest.vip" in url:
-        table = soup.find('table')
+     if "www.wetest.vip" in url:
+        # 查找包含IP数据的主表格
+        table = soup.find('table', {'class': 'table'})
+        if not table:
+            table = soup.find('table')  # 尝试查找任何表格
+        
         if table:
             rows = table.find_all('tr')[1:]  # 跳过表头
             for row in rows:
@@ -75,10 +75,12 @@ def process_site_data(url):
                     ip_address = columns[1].text.strip()
                     latency_text = columns[4].text.strip()  # 延迟在第5列
                     
+                    # 解析延迟值
                     latency_match = latency_pattern.search(latency_text)
                     if latency_match:
                         latency_value = float(latency_match.group(1))
                         isp = isp_classifier(line_name)
+                        
                         data.append({
                             'ip': ip_address,
                             'line_name': line_name,
@@ -86,7 +88,7 @@ def process_site_data(url):
                             'isp': isp
                         })
     
-    # 原有其他网站的解析
+    # 原有其他网站的解析保持不变
     elif "cf.090227.xyz" in url:
         rows = soup.find_all('tr')
         for row in rows:
@@ -105,6 +107,7 @@ def process_site_data(url):
                         'latency': latency_value,
                         'isp': isp
                     })
+
 
     elif "stock.hostmonit.com" in url:
         rows = soup.find_all('tr', class_=re.compile(r'el-table__row'))
@@ -187,16 +190,11 @@ def process_site_data(url):
 def filter_and_sort_ips(data):
     """筛选并排序IP，按运营商分类"""
     # 按运营商分类
-    isp_data = {
-        '移动': [],
-        '联通': [],
-        '电信': []
-    }
+    isp_data = defaultdict(list)
     
     for item in data:
-        if item['latency'] < 100:  # 只保留延迟低于100ms的IP
-            if item['isp'] in isp_data:
-                isp_data[item['isp']].append(item)
+        if item['isp'] in ISP_KEYWORDS:  # 只处理三大运营商的IP
+            isp_data[item['isp']].append(item)
     
     # 对每个运营商的IP按延迟排序
     for isp in isp_data:
@@ -204,8 +202,8 @@ def filter_and_sort_ips(data):
     
     # 获取每个运营商前50个IP
     result = {}
-    for isp in isp_data:
-        result[isp] = isp_data[isp][:50]
+    for isp in ['移动', '电信', '联通']:  # 确保顺序一致
+        result[isp] = isp_data.get(isp, [])[:50]
     
     return result
 
