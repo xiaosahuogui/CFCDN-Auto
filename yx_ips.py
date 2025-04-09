@@ -80,23 +80,31 @@ def process_site_data(url):
                     })
 
     elif "www.wetest.vip" in url:
-        rows = soup.find_all('tr', class_=re.compile(r'el-table__row'))
-        for row in rows:
-            columns = row.find_all('td')
-            if len(columns) >= 3:
-                line_name = columns[0].text.strip()
-                ip_address = columns[1].text.strip()
-                latency_text = columns[2].text.strip()
-                latency_match = latency_pattern.match(latency_text)
-                if latency_match:
-                    latency_value = float(latency_match.group(1))
-                    isp = isp_classifier(line_name)
-                    data.append({
-                        'ip': ip_address,
-                        'line_name': line_name,
-                        'latency': latency_value,
-                        'isp': isp
-                    })
+         table = soup.find('table', {'class': 'table'})
+        if table:
+            rows = table.find_all('tr')[1:]  # 跳过表头
+            for row in rows:
+                columns = row.find_all('td')
+                if len(columns) >= 7:  # 确保有完整数据列
+                    line_name = columns[0].text.strip()
+                    ip_address = columns[1].text.strip()
+                    latency_text = columns[4].text.strip()  # 延迟在第5列
+                    
+                    # 解析延迟值
+                    latency_match = latency_pattern.search(latency_text)
+                    if latency_match:
+                        latency_value = float(latency_match.group(1))
+                        isp = isp_classifier(line_name)
+                        
+                        # 只收集三大运营商的IP
+                        if isp in ISP_KEYWORDS:
+                            data.append({
+                                'ip': ip_address,
+                                'line_name': line_name,
+                                'latency': latency_value,
+                                'isp': isp,
+                                'source': 'wetest'
+                            })
 
     elif "ip.164746.xyz" in url:
         rows = soup.find_all('tr')
