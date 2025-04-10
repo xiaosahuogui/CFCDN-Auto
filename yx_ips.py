@@ -195,14 +195,24 @@ def clear_dns_records():
         records = response.json().get('result', [])
         print(f"找到 {len(records)} 条DNS记录需要删除...")
         
+        deleted_count = 0
         for record in records:
             if record['name'] == CF_DOMAIN_NAME or record['name'].endswith(f".{CF_DOMAIN_NAME}"):
                 delete_url = f"{url}/{record['id']}"
                 delete_response = requests.delete(delete_url, headers=headers)
                 if delete_response.status_code == 200:
                     print(f"成功删除DNS记录: {record['name']} ({record['type']})")
+                    deleted_count += 1
+                    time.sleep(0.5)  # 添加短暂延迟避免速率限制
                 else:
                     print(f"删除DNS记录失败: {record['id']}, 状态码: {delete_response.status_code}")
+                    print(f"错误详情: {delete_response.json().get('errors', '未知错误')}")
+        
+        print(f"共删除 {deleted_count}/{len(records)} 条DNS记录")
+        time.sleep(5)  # 等待删除操作完全生效
+    else:
+        print(f"获取DNS记录失败，状态码: {response.status_code}")
+        print(f"错误详情: {response.json().get('errors', '未知错误')}")
 
 def check_record_exists(ip):
     """检查记录是否已存在"""
@@ -230,13 +240,12 @@ def check_record_exists(ip):
 
 def add_dns_record(ip):
     """添加DNS记录"""
-    print(f"正在添加DNS记录: {ip}")
-    
     # 首先检查记录是否已存在
     if check_record_exists(ip):
         print(f"记录已存在，跳过添加: {ip}")
         return True
     
+    print(f"正在添加DNS记录: {ip}")
     url = f"https://api.cloudflare.com/client/v4/zones/{CF_ZONE_ID}/dns_records"
     headers = {
         "Authorization": f"Bearer {CF_API_KEY}",
@@ -303,9 +312,7 @@ def main():
     for ip in all_ips:
         if add_dns_record(ip):
             success_count += 1
-        # 控制速度，每添加一个记录后等待1-3秒
-        wait_time = 2  # 基本等待时间
-        time.sleep(wait_time)
+        time.sleep(1)  # 控制添加速度
     
     print(f"DNS记录添加完成，成功添加 {success_count}/{len(all_ips)} 条记录")
 
