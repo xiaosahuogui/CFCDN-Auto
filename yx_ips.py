@@ -214,36 +214,8 @@ def clear_dns_records():
         print(f"获取DNS记录失败，状态码: {response.status_code}")
         print(f"错误详情: {response.json().get('errors', '未知错误')}")
 
-def check_record_exists(ip):
-    """检查记录是否已存在"""
-    url = f"https://api.cloudflare.com/client/v4/zones/{CF_ZONE_ID}/dns_records"
-    headers = {
-        "Authorization": f"Bearer {CF_API_KEY}",
-        "X-Auth-Email": CF_API_EMAIL,
-        "Content-Type": "application/json"
-    }
-    
-    params = {
-        "name": CF_DOMAIN_NAME,
-        "type": "A",
-        "content": ip
-    }
-    
-    try:
-        response = requests.get(url, headers=headers, params=params)
-        if response.status_code == 200:
-            records = response.json().get('result', [])
-            return len(records) > 0
-    except Exception as e:
-        print(f"检查记录存在时出错: {str(e)}")
-    return False
-
 def add_dns_record(ip):
     """添加DNS记录"""
-    # 首先检查记录是否已存在
-    if check_record_exists(ip):
-        print(f"记录已存在，跳过添加: {ip}")
-        return True
     
     print(f"正在添加DNS记录: {ip}")
     url = f"https://api.cloudflare.com/client/v4/zones/{CF_ZONE_ID}/dns_records"
