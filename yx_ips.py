@@ -4,7 +4,7 @@ from bs4 import BeautifulSoup
 import re
 from collections import defaultdict
 import json
-import time  # 新增导入
+import time  # 确保导入time模块
 
 # Cloudflare API配置信息
 CF_API_KEY = os.getenv('CF_API_KEY')
@@ -204,9 +204,39 @@ def clear_dns_records():
                 else:
                     print(f"删除DNS记录失败: {record['id']}, 状态码: {delete_response.status_code}")
 
+def check_record_exists(ip):
+    """检查记录是否已存在"""
+    url = f"https://api.cloudflare.com/client/v4/zones/{CF_ZONE_ID}/dns_records"
+    headers = {
+        "Authorization": f"Bearer {CF_API_KEY}",
+        "X-Auth-Email": CF_API_EMAIL,
+        "Content-Type": "application/json"
+    }
+    
+    params = {
+        "name": CF_DOMAIN_NAME,
+        "type": "A",
+        "content": ip
+    }
+    
+    try:
+        response = requests.get(url, headers=headers, params=params)
+        if response.status_code == 200:
+            records = response.json().get('result', [])
+            return len(records) > 0
+    except Exception as e:
+        print(f"检查记录存在时出错: {str(e)}")
+    return False
+
 def add_dns_record(ip):
     """添加DNS记录"""
     print(f"正在添加DNS记录: {ip}")
+    
+    # 首先检查记录是否已存在
+    if check_record_exists(ip):
+        print(f"记录已存在，跳过添加: {ip}")
+        return True
+    
     url = f"https://api.cloudflare.com/client/v4/zones/{CF_ZONE_ID}/dns_records"
     headers = {
         "Authorization": f"Bearer {CF_API_KEY}",
@@ -223,7 +253,7 @@ def add_dns_record(ip):
         "type": "A",
         "name": CF_DOMAIN_NAME,
         "content": ip,
-        "ttl": 1,  # 使用1表示自动TTL，Cloudflare推荐值
+        "ttl": 1,  # 使用1表示自动TTL
         "proxied": False
     }
     
@@ -241,18 +271,6 @@ def add_dns_record(ip):
     except Exception as e:
         print(f"创建DNS记录时发生异常: {str(e)}")
         return False
-
-def add_dns_record_with_retry(ip, max_retries=3):
-    """带重试机制的添加DNS记录"""
-    for attempt in range(max_retries):
-        success = add_dns_record(ip)
-        if success:
-            return True
-        if attempt < max_retries - 1:
-            wait_time = (attempt + 1) * 5  # 指数退避
-            print(f"等待{wait_time}秒后重试...")
-            time.sleep(wait_time)
-    return False
 
 def main():
     all_data = []
@@ -283,9 +301,11 @@ def main():
     
     success_count = 0
     for ip in all_ips:
-        if add_dns_record_with_retry(ip):
+        if add_dns_record(ip):
             success_count += 1
-        time.sleep(1)  # 添加间隔避免速率限制
+        # 控制速度，每添加一个记录后等待1-3秒
+        wait_time = 2  # 基本等待时间
+        time.sleep(wait_time)
     
     print(f"DNS记录添加完成，成功添加 {success_count}/{len(all_ips)} 条记录")
 
