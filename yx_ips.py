@@ -157,7 +157,7 @@ def filter_and_sort_ips(data):
     # 获取每个运营商前10个IP
     result = {}
     for isp in ['移动', '电信', '联通']:  # 确保顺序一致
-        result[isp] = isp_data.get(isp, [])[:10]
+        result[isp] = isp_data.get(isp, [])[:20]
     
     return result
 
